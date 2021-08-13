@@ -8,6 +8,7 @@ import (
 	_ "github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"io/ioutil"
+	"log"
 	"net/http"
 	_ "net/http/cookiejar"
 	"strconv"
@@ -515,6 +516,5 @@ func main() {
 	go ClickerCounter(&GoloAdsServer)
 	go ViewCounter(&GoloAdsServer)
 
-	//log.Fatal(http.ListenAndServeTLS("doats.ml:8080", "certificate.crt", "private.key", mux))
-	http.ListenAndServe(":8080", mux)
+	log.Fatal(http.ListenAndServeTLS("doats.ml:8080", "certificate.crt", "private.key", mux))
 }
