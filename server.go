@@ -8,10 +8,11 @@ import (
 	_ "github.com/google/uuid"
 	_ "github.com/lib/pq"
 	"io/ioutil"
-	"log"
 	"net/http"
 	_ "net/http/cookiejar"
 	"strconv"
+	"strings"
+	"time"
 )
 
 const (
@@ -32,9 +33,28 @@ type test struct {
 
 var Test = test{Body: "OK"}
 
+var ClicksMap = make(map[BannerGotInteractedRequest]bool)
+var ViewsMap = make(map[BannerGotInteractedRequest]bool)
+
 var counter int = 0
 
 var DB = InitializeDB()
+
+func ClickerCounter(a *AdsServer) {
+	for key := range ClicksMap {
+		a.userStorage.addMoney(a.userStorage.returnUserIDFromExtensionID(key.ExtensionID), MoneyForClick)
+	}
+	ClicksMap = map[BannerGotInteractedRequest]bool{}
+	time.Sleep(360000)
+}
+
+func ViewCounter(a *AdsServer) {
+	for key := range ViewsMap {
+		a.userStorage.addMoney(a.userStorage.returnUserIDFromExtensionID(key.ExtensionID), MoneyForView)
+	}
+	ViewsMap = map[BannerGotInteractedRequest]bool{}
+	time.Sleep(120000)
+}
 
 func checkForError(err error, errorCode int, w http.ResponseWriter) {
 	if err != nil {
@@ -59,18 +79,6 @@ func PreInnitiallizeStuff(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
 	w.Header().Set("Access-Control-Allow-Headers", "*")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-}
-
-func (a *AdsServer) sendCookieAndUserID(w http.ResponseWriter, user_id int) {
-	newHash := uuid.New().String()
-	a.userStorage.replaceHash(newHash, user_id)
-	cookie := &http.Cookie{
-		Name:   "user-cookie",
-		Value:  newHash,
-		MaxAge: 3000000,
-	}
-
-	http.SetCookie(w, cookie)
 }
 
 func (a *AdsServer) sendExtensionIDHandler(w http.ResponseWriter, r *http.Request) {
@@ -180,7 +188,7 @@ func (a *AdsServer) bannerClickedHandler(w http.ResponseWriter, r *http.Request)
 
 	user := a.userStorage.getUserByID(a.userStorage.returnUserIDFromExtensionID(addClick.ExtensionID))
 	a.analyticsStorage.addClickToDB(addClick.BannerID, user.ID)
-	a.userStorage.addMoney(user.ID, MoneyForClick)
+	ClicksMap[addClick] = true
 }
 
 func (a *AdsServer) sendAnalyticsHandler(w http.ResponseWriter, r *http.Request) {
@@ -237,12 +245,22 @@ func (a *AdsServer) receiveBannerFromAdmin2(w http.ResponseWriter, r *http.Reque
 	rawData, err := ioutil.ReadAll(r.Body)
 	checkForError(err, http.StatusBadRequest, w)
 
-	bannerID := r.URL.Query().Get("id")
+	bannerID := r.Header.Get("tgId")
 
-	a.bannerStorage.changeBannerImage(bannerID, string(rawData))
+	imgType := r.Header.Get("Content-Type")
 
+	filetype := strings.Split(imgType, "/")[1]
+	filename := fmt.Sprintf("./images/%s.%s", bannerID, filetype)
+	err = ioutil.WriteFile(filename, rawData, 0666)
+	checkForError(err, http.StatusInternalServerError, w)
+
+	a.bannerStorage.changeBannerImage(bannerID, filename)
 	a.bannerStorage.putBannerIntoDB(bannerID)
+	var newCookie CookieResponse
+	newCookie.UserCookie = uuid.New().String()
+	rawBytes, err := json.Marshal(newCookie)
 
+	w.Write(rawBytes)
 }
 
 /*func (a *AdsServer) receiveBannerImageHandler(w http.ResponseWriter, r *http.Request) {
@@ -315,7 +333,7 @@ func (a *AdsServer) bannerWatchedHandler(w http.ResponseWriter, r *http.Request)
 
 	user := a.userStorage.getUserByID(a.userStorage.returnUserIDFromExtensionID(addView.ExtensionID))
 	a.analyticsStorage.addViewToDB(addView.BannerID, user.ID)
-	a.userStorage.addMoney(user.ID, MoneyForView)
+	ViewsMap[addView] = true
 }
 
 func (a *AdsServer) registerUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -425,7 +443,6 @@ func (a *AdsServer) sendAdvertiserBanners(w http.ResponseWriter, r *http.Request
 				Image:    banner.Image,
 			})
 	}
-	a.sendCookieAndUserID(w, AdvertiserID)
 	rawBytes, err := json.Marshal(advertiserBanners)
 	checkForError(err, http.StatusInternalServerError, w)
 	w.Write(rawBytes)
@@ -435,7 +452,7 @@ func main() {
 
 	// initializing test objects
 
-	TestAdvertisement := Banner{
+	TestAdvertisement1 := Banner{
 		BannerID:    "nbn9ewnd",
 		Image:       "https://klike.net/uploads/posts/2019-05/1556708032_1.jpg",
 		DomainURL:   "yandex.ru",
@@ -443,7 +460,28 @@ func main() {
 		ImageBase64: false,
 	}
 
-	TestAdvertisementStorage := BannerStorage{map[string]Banner{TestAdvertisement.BannerID: TestAdvertisement}}
+	TestAdvertisement2 := Banner{
+		BannerID:     "dnkjfnor",
+		Image:        "https://lh3.googleusercontent.com/proxy/CRGj8PbtxI-4VfWouAiAbClb0uTfRwrt6FxZhFVtigesM2xkSebu0mV2bKAw6G8Xzxsd3VwQhIuxGeUvDeS0-fz0imr7yVb6xb_UBwxg_X7gHkeMY0U",
+		DomainURL:    "github.com",
+		Domains:      nil,
+		AdvertiserID: 0,
+		ImageBase64:  false,
+	}
+
+	TestAdvertisement3 := Banner{
+		BannerID:     "dniebskj",
+		Image:        "https://turbaza.ru/images/bases/2051/c2c19a0c42130d967b1eb0ff376b6cf6.jpg",
+		DomainURL:    "google.com",
+		Domains:      nil,
+		AdvertiserID: 0,
+		ImageBase64:  false,
+	}
+
+	TestAdvertisementStorage := BannerStorage{map[string]Banner{
+		TestAdvertisement1.BannerID: TestAdvertisement1,
+		TestAdvertisement2.BannerID: TestAdvertisement2,
+		TestAdvertisement3.BannerID: TestAdvertisement3}}
 
 	arrayLength := 14
 	TestAnalytics := Analytics{
@@ -455,8 +493,6 @@ func main() {
 	}
 	TestAnalyticsStorage := AnalyticsStorage{map[string]Analytics{TestAnalytics.BannerID: TestAnalytics}}
 	GoloAdsServer := AdsServer{UserStorage{}, TestAdvertisementStorage, TestAnalyticsStorage, InitializeDB()}
-
-	// initializing PostgreSQL database
 
 	// initializing http handlers
 
@@ -476,5 +512,9 @@ func main() {
 	mux.Handle("/link", http.HandlerFunc(GoloAdsServer.linkExtensionIDToUserHandler))
 	mux.Handle("/banners", http.HandlerFunc(GoloAdsServer.sendAdvertiserBanners))
 
-	log.Fatal(http.ListenAndServeTLS("doats.ml:8080", "certificate.crt", "private.key", mux))
+	go ClickerCounter(&GoloAdsServer)
+	go ViewCounter(&GoloAdsServer)
+
+	//log.Fatal(http.ListenAndServeTLS("doats.ml:8080", "certificate.crt", "private.key", mux))
+	http.ListenAndServe(":8080", mux)
 }

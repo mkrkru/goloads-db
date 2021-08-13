@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-var GoLoAdsToken = TOKEN
+var GoLoAdsToken = ""
 
 type MoneyRequest struct {
 	Token       string  `json:"token"`

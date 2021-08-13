@@ -13,6 +13,7 @@ const (
 	letterIdxMask = 1<<letterIdxBits - 1
 	letterIdxMax  = 63 / letterIdxBits
 )
+
 func RandomString(length int) string {
 	sb := strings.Builder{}
 	sb.Grow(length)
@@ -32,6 +33,7 @@ func RandomString(length int) string {
 }
 
 func RandomArray(length int) []int {
+	rand.Seed(time.Now().Unix())
 	array := make([]int, length)
 	for i := 0; i < length; i++{
 		array[i] = rand.Intn(100)

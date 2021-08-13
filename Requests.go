@@ -48,3 +48,7 @@ type AdvertiserBannerResponse struct {
 	Domains  []string `json:"domains"`
 	Image    string   `json:"image"`
 }
+
+type CookieResponse struct {
+	UserCookie string `json:"userCookie"`
+}
